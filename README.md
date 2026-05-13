@@ -4,8 +4,8 @@ A passive 802.11 monitor. Listens for management, control, and data frames on a
 monitor-mode wireless interface, tracks access points and client devices, and
 serves a web UI showing per-second packet counts and association events.
 
-![overview](docs/dash_view.png)
-![device detail](docs/detail_view.png)
+![overview](screenshots/dash_view.webp)
+![device detail](screenshots/detail_view.webp)
 
 ## What it does
 
