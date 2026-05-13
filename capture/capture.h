@@ -22,7 +22,7 @@ typedef struct {
 	int8_t   rssi;             /* dBm from radiotap, 0 if not present      */
 	uint8_t  channel;          /* derived from radiotap freq, 0 if absent  */
 
-	uint64_t timestamp_us;     /* CLOCK_MONOTONIC at time of recvfrom()    */
+	uint64_t timestamp_us;     /* CLOCK_REALTIME (unix epoch us) at recvfrom() */
 } frame_info_t;
 
 /* -------------------------------------------------------------------------

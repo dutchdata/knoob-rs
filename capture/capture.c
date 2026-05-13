@@ -267,7 +267,7 @@ static int parse_frame(const uint8_t *buf, int buflen, frame_info_t *fi)
 static uint64_t now_us(void)
 {
 	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
+	clock_gettime(CLOCK_REALTIME, &ts);
 	return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)(ts.tv_nsec / 1000);
 }
 
