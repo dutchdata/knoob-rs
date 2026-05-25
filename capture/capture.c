@@ -258,6 +258,22 @@ static int parse_frame(const uint8_t *buf, int buflen, frame_info_t *fi)
 
 	fi->is_randomized = (fi->src[0] & 0x02) ? 1 : 0;
 
+	/* parse SSID from beacon (subtype 8) or probe-resp (subtype 5) */
+	if (fi->frame_type == 0
+			&& (fi->frame_subtype == 8 || fi->frame_subtype == 5)
+			&& buflen >= 24 + 12 + 2) {
+		/* skip 24-byte hdr + 12-byte fixed body (ts 8 + bi 2 + cap 2) */
+		int off = 24 + 12;
+		/* SSID IE must be first */
+		if (buf[off] == 0) {
+			uint8_t len = buf[off + 1];
+			if (len <= 32 && off + 2 + len <= buflen) {
+				memcpy(fi->ssid, buf + off + 2, len);
+				fi->ssid_len = len;
+			}
+		}
+	}
+
 	return 0;
 }
 

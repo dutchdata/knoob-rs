@@ -65,6 +65,8 @@ export interface Station {
 	last_peer:       string;
 	first_seen:      number;
 	last_seen:       number;
+	ssid:            string | null;
+	vendor:          string | null;
 }
 
 export async function fetchAps(): Promise<Ap[]> {

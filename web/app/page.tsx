@@ -179,10 +179,13 @@ export default function Overview() {
             : <div style={LIST_SCROLL}>{aps.map(ap => (
               <div key={ap.mac} style={ROW_STYLE}>
                 <div>
-                  <Link href={`/device?mac=${encodeURIComponent(ap.mac)}`} style={{ color: "var(--text)", fontFamily: "monospace" }}>
+                  <div style={{ color: "var(--text)" }}>{ap.ssid ?? <span style={{ color: "var(--muted)" }}>[hidden]</span>}</div>
+                  <Link href={`/device?mac=${encodeURIComponent(ap.mac)}`} style={{ color: "var(--muted)", fontFamily: "monospace", fontSize: 11 }}>
                     {formatMac(ap.mac)}
                   </Link>
-                  <div style={{ color: "var(--muted)", fontSize: 11 }}>ch {ap.channel}</div>
+                  <div style={{ color: "var(--muted)", fontSize: 11 }}>
+                    ch {ap.channel}{ap.vendor && ` · ${ap.vendor}`}
+                  </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ color: "var(--accent2)" }}>{ap.rssi} dBm</div>
@@ -207,6 +210,7 @@ export default function Overview() {
                       {formatMac(d.mac)}
                     </Link>
                     {d.is_randomized && <span style={{ color: "var(--accent)", fontSize: 10, marginLeft: 6 }}>RAND</span>}
+                    {d.vendor && <div style={{ color: "var(--muted)", fontSize: 11 }}>{d.vendor}</div>}
                     <div style={{ color: "var(--muted)", fontSize: 11 }}>
                       tx: m{d.mgmt_tx} c{d.ctrl_tx} d{d.data_tx} · rx: d{d.data_rx}
                     </div>

@@ -27,6 +27,9 @@ pub fn open_db(env: &Arc<Environment>) -> Result<Arc<Database>, Box<dyn Error>> 
 // -----------------------------------------------------------------------------
 
 pub struct AppDb {
+    // OUI vendor lookup map (loaded once at startup from manuf file)
+    pub oui_map: crate::oui::OuiMap,
+
     // access points
     pub aps_env: Arc<Environment>,
     pub aps_db:  Arc<Database>,
@@ -49,7 +52,7 @@ pub struct AppDb {
 }
 
 impl AppDb {
-    pub fn open() -> Result<Self, Box<dyn Error>> {
+    pub fn open(oui_map: crate::oui::OuiMap) -> Result<Self, Box<dyn Error>> {
         let aps_env     = setup_env("lmdb_aps",     256 << 20)?; // 256MB
         let aps_db      = open_db(&aps_env)?;
         let devices_env = setup_env("lmdb_devices", 256 << 20)?;
@@ -62,6 +65,7 @@ impl AppDb {
         let stations_db  = open_db(&stations_env)?;
 
         Ok(Self {
+            oui_map,
             aps_env, aps_db,
             devices_env, devices_db,
             frames_env, frames_db,
@@ -149,6 +153,7 @@ pub struct StationRecord {
     pub last_peer:  [u8; 6],
     pub first_seen: u64,
     pub last_seen:  u64,
+    pub ssid:       Option<String>,
 }
 
 // -----------------------------------------------------------------------------

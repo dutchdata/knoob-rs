@@ -96,6 +96,8 @@ pub struct StationResponse {
     pub last_peer:     String,
     pub first_seen:    u64,
     pub last_seen:     u64,
+    pub ssid:          Option<String>,
+    pub vendor:        Option<String>,
 }
 
 // -----------------------------------------------------------------------------
@@ -334,6 +336,8 @@ pub async fn get_stations(db: web::Data<Arc<AppDb>>) -> impl Responder {
 
     let resp: Vec<StationResponse> = stations.iter().map(|s| StationResponse {
         mac:           mac_to_string(&s.mac),
+        ssid:          s.ssid.clone(),
+        vendor:        crate::oui::lookup(&db.oui_map, &s.mac),
         is_ap:         s.is_ap,
         is_prober:     s.is_prober,
         is_awdl:       s.is_awdl,

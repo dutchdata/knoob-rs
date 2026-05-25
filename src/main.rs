@@ -1,6 +1,7 @@
 mod api;
 mod db;
 mod ffi;
+mod oui;
 
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use db::{
@@ -159,7 +160,7 @@ fn update_station(db: &AppDb, mac: &[u8; 6], is_tx: bool, frame: &frame_info_t, 
     let bcast = [0xff; 6];
     if *mac == zero || *mac == bcast { return; }
     if mac[0] & 0x01 != 0 { return; }  // skip multicast dst
-    
+
     // mark AWDL peers: locally-admin MAC sending beacon/probe-resp/action
     let locally_admin = (mac[0] & 0x02) != 0;
     let awdl_subtype = frame.frame_type == 0
@@ -215,7 +216,7 @@ fn update_station(db: &AppDb, mac: &[u8; 6], is_tx: bool, frame: &frame_info_t, 
             _ => {}
         }
     }
-    
+
     if mark_awdl { rec.is_awdl = true; }
     let _ = upsert_station(db.stations_env.clone(), db.stations_db.clone(), &rec);
 }
@@ -231,6 +232,12 @@ fn mark_as_ap(db: &AppDb, bssid: &[u8; 6], frame: &frame_info_t, now: u64) {
     rec.channel  = frame.channel;
     rec.rssi     = frame.rssi;
     rec.last_seen = now;
+    if frame.ssid_len > 0 {
+        let len = frame.ssid_len as usize;
+        if let Ok(s) = std::str::from_utf8(&frame.ssid[..len]) {
+            rec.ssid = Some(s.to_string());
+        }
+    }
     let _ = upsert_station(db.stations_env.clone(), db.stations_db.clone(), &rec);
 }
 
@@ -266,8 +273,20 @@ async fn main() -> std::io::Result<()> {
         std::process::exit(1);
     });
 
+    // load OUI vendor map (Wireshark `manuf` format)
+    let oui_map = match oui::load("manuf") {
+        Ok(m) => {
+            eprintln!("loaded {} OUI entries", m.len());
+            m
+        }
+        Err(e) => {
+            eprintln!("warning: could not load manuf file: {} (vendor lookups disabled)", e);
+            std::collections::HashMap::new()
+        }
+    };
+
     // open all LMDB envs
-    let db = Arc::new(match AppDb::open() {
+    let db = Arc::new(match AppDb::open(oui_map) {
         Ok(v)  => v,
         Err(e) => {
             eprintln!("failed to open db: {}", e);

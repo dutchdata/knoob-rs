@@ -23,6 +23,9 @@ typedef struct {
 	uint8_t  channel;          /* derived from radiotap freq, 0 if absent  */
 
 	uint64_t timestamp_us;     /* CLOCK_REALTIME (unix epoch us) at recvfrom() */
+
+	uint8_t  ssid[32];         /* 802.11 SSID max 32 bytes, only set for beacon/probe-resp */
+	uint8_t  ssid_len;         /* 0 if absent or hidden (zero-length SSID IE) */
 } frame_info_t;
 
 /* -------------------------------------------------------------------------
