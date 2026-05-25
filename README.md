@@ -81,7 +81,7 @@ Then:
 sudo ./target/release/knoob-rs <iface>
 ```
 
-Open `http://localhost:9090` in a browser.
+Open in browser at `http://localhost:9090` if running on same machine or at `http://<local_ip>:9090` if running on separate LAN device.
 
 ## Architecture
 
