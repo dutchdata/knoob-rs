@@ -1,8 +1,5 @@
 /target
-/lmdb_aps
-/lmdb_devices
-/lmdb_frames
-/lmdb_events
+/lmdb_*
 /web/node_modules
 /web/.next
 /web/out
@@ -10,3 +7,4 @@
 .DS_Store
 nuke_lmdb.sh
 run_with_debug.sh
+manuf
