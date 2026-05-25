@@ -42,6 +42,10 @@ pub struct AppDb {
     // assoc/disassoc/deauth events
     pub events_env: Arc<Environment>,
     pub events_db:  Arc<Database>,
+
+    // unified stations (APs + devices), keyed by MAC
+    pub stations_env: Arc<Environment>,
+    pub stations_db:  Arc<Database>,
 }
 
 impl AppDb {
@@ -54,12 +58,15 @@ impl AppDb {
         let frames_db   = open_db(&frames_env)?;
         let events_env  = setup_env("lmdb_events",  128 << 20)?;
         let events_db   = open_db(&events_env)?;
+        let stations_env = setup_env("lmdb_stations", 256 << 20)?;
+        let stations_db  = open_db(&stations_env)?;
 
         Ok(Self {
             aps_env, aps_db,
             devices_env, devices_db,
             frames_env, frames_db,
             events_env, events_db,
+            stations_env, stations_db,
         })
     }
 }
@@ -112,6 +119,36 @@ pub struct EventRecord {
     pub bssid:      [u8; 6],
     pub event_type: EventType,
     pub timestamp:  u64,
+}
+
+// -----------------------------------------------------------------------------
+// Unified station record — APs and devices in one table, distinguished by is_ap
+// -----------------------------------------------------------------------------
+
+#[derive(bitcode::Encode, bitcode::Decode, Clone, Debug, Default)]
+pub struct StationRecord {
+    pub mac:           [u8; 6],
+    pub is_ap:         bool,           // sticky: set true when seen as beacon/probe-resp BSSID
+    pub is_prober:     bool,           // true if only seen as probe-req src
+    pub prober_locked: bool,           // once true, is_prober can't flip back
+    pub is_awdl:       bool,          // locally-admin MAC sending beacon/probe-resp
+    pub is_randomized: bool,
+    pub channel:       u8,
+    pub rssi:          i8,
+
+    pub mgmt_tx: u64,
+    pub mgmt_rx: u64,
+    pub ctrl_tx: u64,
+    pub ctrl_rx: u64,
+    pub data_tx: u64,
+    pub data_rx: u64,
+
+    // per-mgmt-subtype tx counters (subtypes 0..15)
+    pub mgmt_subtype_tx: [u64; 16],
+
+    pub last_peer:  [u8; 6],
+    pub first_seen: u64,
+    pub last_seen:  u64,
 }
 
 // -----------------------------------------------------------------------------
@@ -359,6 +396,47 @@ pub fn get_all_events(
     for item in cursor.iter() {
         let (_k, v) = item;
         if let Ok(rec) = bitcode::decode::<EventRecord>(v) {
+            out.push(rec);
+        }
+    }
+    Ok(out)
+}
+
+// -----------------------------------------------------------------------------
+// Station CRUD
+// -----------------------------------------------------------------------------
+
+pub fn get_station(
+    env: Arc<Environment>,
+    db:  Arc<Database>,
+    mac: &[u8; 6],
+) -> Option<StationRecord> {
+    let txn = env.begin_ro_txn().ok()?;
+    let data = txn.get(*db, mac).ok()?;
+    bitcode::decode::<StationRecord>(data).ok()
+}
+
+pub fn upsert_station(
+    env: Arc<Environment>,
+    db:  Arc<Database>,
+    rec: &StationRecord,
+) -> Result<(), Box<dyn Error>> {
+    let mut txn = env.begin_rw_txn()?;
+    txn.put(*db, &rec.mac, &bitcode::encode(rec), WriteFlags::empty())?;
+    txn.commit()?;
+    Ok(())
+}
+
+pub fn get_all_stations(
+    env: Arc<Environment>,
+    db:  Arc<Database>,
+) -> Result<Vec<StationRecord>, Box<dyn Error>> {
+    let txn = env.begin_ro_txn()?;
+    let mut cursor = txn.open_ro_cursor(*db)?;
+    let mut out = Vec::new();
+    for item in cursor.iter() {
+        let (_k, v) = item;
+        if let Ok(rec) = bitcode::decode::<StationRecord>(v) {
             out.push(rec);
         }
     }

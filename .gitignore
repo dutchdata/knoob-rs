@@ -8,3 +8,5 @@
 /web/out
 *.log
 .DS_Store
+nuke_lmdb.sh
+run_with_debug.sh

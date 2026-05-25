@@ -6,7 +6,8 @@ use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use db::{
     upsert_ap, upsert_device, increment_frame_count, insert_event,
     get_ap, get_device,
-    ApRecord, DeviceRecord, EventRecord, EventType, AppDb,
+    get_station, upsert_station,
+    ApRecord, DeviceRecord, EventRecord, EventType, StationRecord, AppDb,
 };
 use ffi::{
     capture_config_t, capture_start, capture_stop,
@@ -66,19 +67,24 @@ unsafe extern "C" fn on_frame(frame: *const frame_info_t, user_data: *mut std::f
     // Update or create AP record (mgmt beacon frames have bssid == src)
     // Only treat as AP if it's a beacon (subtype 8) or probe-resp (subtype 5)
     // -------------------------------------------------------------------------
-    if frame.frame_type == 0 && (frame.frame_subtype == 8 || frame.frame_subtype == 5) {
-        let existing = get_ap(db.aps_env.clone(), db.aps_db.clone(), &frame.bssid);
-        let rec = ApRecord {
-            bssid:      frame.bssid,
-            ssid:       existing.as_ref().and_then(|e| e.ssid.clone()), // preserved
-            channel:    frame.channel,
-            rssi:       frame.rssi,
-            mfpr:       false, // TODO: parse RSN IE in C layer
-            mfpc:       false,
-            first_seen: existing.as_ref().map(|e| e.first_seen).unwrap_or(now),
-            last_seen:  now,
-        };
-        let _ = upsert_ap(db.aps_env.clone(), db.aps_db.clone(), &rec);
+    let bssid_locally_admin = (frame.bssid[0] & 0x02) != 0;
+    let bssid_multicast     = (frame.bssid[0] & 0x01) != 0;
+    if frame.frame_type == 0
+        && (frame.frame_subtype == 8 || frame.frame_subtype == 5)
+            && !bssid_locally_admin
+            && !bssid_multicast {
+                let existing = get_ap(db.aps_env.clone(), db.aps_db.clone(), &frame.bssid);
+                let rec = ApRecord {
+                    bssid:      frame.bssid,
+                    ssid:       existing.as_ref().and_then(|e| e.ssid.clone()), // preserved
+                    channel:    frame.channel,
+                    rssi:       frame.rssi,
+                    mfpr:       false, // TODO: parse RSN IE in C layer
+                    mfpc:       false,
+                    first_seen: existing.as_ref().map(|e| e.first_seen).unwrap_or(now),
+                    last_seen:  now,
+                };
+                let _ = upsert_ap(db.aps_env.clone(), db.aps_db.clone(), &rec);
     }
 
     // -------------------------------------------------------------------------
@@ -86,7 +92,9 @@ unsafe extern "C" fn on_frame(frame: *const frame_info_t, user_data: *mut std::f
     // -------------------------------------------------------------------------
     let zero  = [0u8; 6];
     let bcast = [0xff; 6];
-    if frame.src != zero && frame.src != bcast {
+    let is_ap_frame = frame.frame_type == 0
+        && (frame.frame_subtype == 8 || frame.frame_subtype == 5);
+    if !is_ap_frame && frame.src != zero && frame.src != bcast {
         let existing = get_device(db.devices_env.clone(), db.devices_db.clone(), &frame.src);
         let rec = DeviceRecord {
             mac:           frame.src,
@@ -128,6 +136,102 @@ unsafe extern "C" fn on_frame(frame: *const frame_info_t, user_data: *mut std::f
             let _ = insert_event(db.events_env.clone(), db.events_db.clone(), &rec);
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Unified station table — update src (tx) and dst (rx) per frame
+    // -------------------------------------------------------------------------
+    update_station(db, &frame.src, true,  frame, now);
+    update_station(db, &frame.dst, false, frame, now);
+
+    // Mark BSSID as an AP if this is a beacon or probe-resp from a valid BSSID
+    if frame.frame_type == 0
+        && (frame.frame_subtype == 8 || frame.frame_subtype == 5)
+            && !bssid_locally_admin
+            && !bssid_multicast
+            && frame.bssid != zero
+            && frame.bssid != bcast {
+                mark_as_ap(db, &frame.bssid, frame, now);
+    }
+}
+
+fn update_station(db: &AppDb, mac: &[u8; 6], is_tx: bool, frame: &frame_info_t, now: u64) {
+    let zero  = [0u8; 6];
+    let bcast = [0xff; 6];
+    if *mac == zero || *mac == bcast { return; }
+    if mac[0] & 0x01 != 0 { return; }  // skip multicast dst
+    
+    // mark AWDL peers: locally-admin MAC sending beacon/probe-resp/action
+    let locally_admin = (mac[0] & 0x02) != 0;
+    let awdl_subtype = frame.frame_type == 0
+        && matches!(frame.frame_subtype, 5 | 8 | 13 | 14);
+    let mark_awdl = is_tx && locally_admin && awdl_subtype;
+
+    let existing = get_station(db.stations_env.clone(), db.stations_db.clone(), mac);
+    // only create new station on tx — rx-only sightings don't qualify
+    if existing.is_none() && !is_tx { return; }
+    let mut rec = existing.unwrap_or_else(|| StationRecord {
+        mac:        *mac,
+        first_seen: now,
+        ..Default::default()
+    });
+
+    rec.last_seen = now;
+    rec.channel   = frame.channel;
+    rec.rssi      = frame.rssi;
+
+    // prober classification: probe-req src = prober until proven otherwise
+    let is_probe_req_src = is_tx
+        && frame.frame_type == 0
+        && frame.frame_subtype == 4;
+    if !rec.prober_locked {
+        if is_probe_req_src {
+            rec.is_prober = true;
+        } else if is_tx {
+            // only tx of non-probe-req locks prober off
+            rec.is_prober     = false;
+            rec.prober_locked = true;
+        }
+    }
+
+    if is_tx {
+        rec.is_randomized = frame.is_randomized != 0;
+        rec.last_peer     = frame.dst;
+        match frame.frame_type {
+            0 => {
+                rec.mgmt_tx += 1;
+                let sub = frame.frame_subtype as usize;
+                if sub < 16 { rec.mgmt_subtype_tx[sub] += 1; }
+            }
+            1 => rec.ctrl_tx += 1,
+            2 => rec.data_tx += 1,
+            _ => {}
+        }
+    } else {
+        rec.last_peer = frame.src;
+        match frame.frame_type {
+            0 => rec.mgmt_rx += 1,
+            1 => rec.ctrl_rx += 1,
+            2 => rec.data_rx += 1,
+            _ => {}
+        }
+    }
+    
+    if mark_awdl { rec.is_awdl = true; }
+    let _ = upsert_station(db.stations_env.clone(), db.stations_db.clone(), &rec);
+}
+
+fn mark_as_ap(db: &AppDb, bssid: &[u8; 6], frame: &frame_info_t, now: u64) {
+    let existing = get_station(db.stations_env.clone(), db.stations_db.clone(), bssid);
+    let mut rec = existing.unwrap_or_else(|| StationRecord {
+        mac:        *bssid,
+        first_seen: now,
+        ..Default::default()
+    });
+    rec.is_ap    = true;
+    rec.channel  = frame.channel;
+    rec.rssi     = frame.rssi;
+    rec.last_seen = now;
+    let _ = upsert_station(db.stations_env.clone(), db.stations_db.clone(), &rec);
 }
 
 // -----------------------------------------------------------------------------
@@ -136,8 +240,10 @@ unsafe extern "C" fn on_frame(frame: *const frame_info_t, user_data: *mut std::f
 
 fn setup_signals() {
     unsafe {
-        libc::signal(libc::SIGINT,  handle_signal as libc::sighandler_t);
-        libc::signal(libc::SIGTERM, handle_signal as libc::sighandler_t);
+        // libc::signal(libc::SIGINT,  handle_signal as libc::sighandler_t);
+        libc::signal(libc::SIGINT,  handle_signal as *const () as libc::sighandler_t);
+        // libc::signal(libc::SIGTERM, handle_signal as libc::sighandler_t);
+        libc::signal(libc::SIGTERM, handle_signal as *const () as libc::sighandler_t);
     }
 }
 
@@ -218,7 +324,8 @@ async fn main() -> std::io::Result<()> {
                 .service(api::get_timeseries_total)
                 .service(api::get_timeseries_by_device)
                 .service(api::get_events)
-                .service(api::get_event_counts),
+                .service(api::get_event_counts)
+                .service(api::get_stations),
             )
             .default_service(web::route().to(static_file_handler))
     })

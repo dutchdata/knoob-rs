@@ -59,6 +59,7 @@ function TotalChart({ points }: { points: TotalPoint[] }) {
     }
   }, [points]);
 
+  // resize
   useEffect(() => {
     const obs = new ResizeObserver(() => {
       if (ref.current && plotRef.current) {
@@ -83,32 +84,8 @@ function TotalChart({ points }: { points: TotalPoint[] }) {
 // Main page
 // -----------------------------------------------------------------------------
 
-const SECTION_STYLE = {
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  padding: 16,
-} as const;
-
-const HEADER_STYLE = {
-  color: "var(--muted)",
-  fontSize: 11,
-  letterSpacing: 2,
-  marginBottom: 12,
-  textTransform: "uppercase" as const,
-};
-
-const ROW_STYLE = {
-  borderBottom: "1px solid var(--border)",
-  padding: "8px 0",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-};
-
-const LIST_SCROLL = { maxHeight: 400, overflowY: "auto" as const };
-
 export default function Overview() {
+
   const [stations,    setStations]    = useState<Station[]>([]);
   const [series,      setSeries]      = useState<TotalPoint[]>([]);
   const [eventCounts, setEventCounts] = useState<EventCounts[]>([]);
@@ -125,14 +102,14 @@ export default function Overview() {
     setLastUpdate(new Date().toLocaleTimeString());
   }
 
+  const aps      = stations.filter(s => s.is_ap);
+  const awdl     = stations.filter(s => s.is_awdl);
+  const probers  = stations.filter(s => s.is_prober);
+  const devices  = stations.filter(s => !s.is_ap && !s.is_awdl && !s.is_prober);
+
   usePoll(refresh, pollMs);
 
   const ecMap = Object.fromEntries(eventCounts.map(e => [e.mac, e]));
-
-  const aps     = stations.filter(s => s.is_ap);
-  const awdl    = stations.filter(s => s.is_awdl);
-  const probers = stations.filter(s => s.is_prober);
-  const devices = stations.filter(s => !s.is_ap && !s.is_awdl && !s.is_prober);
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px" }}>
@@ -161,8 +138,8 @@ export default function Overview() {
       </div>
 
       {/* total time series */}
-      <section style={{ ...SECTION_STYLE, marginBottom: 20 }}>
-        <h2 style={HEADER_STYLE}>total packets / sec</h2>
+      <section style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 16, marginBottom: 20 }}>
+        <h2 style={{ color: "var(--muted)", fontSize: 11, letterSpacing: 2, marginBottom: 12, textTransform: "uppercase" }}>total packets / sec</h2>
         {series.length > 0
           ? <TotalChart points={series} />
           : <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)" }}>waiting for data…</div>
@@ -172,16 +149,16 @@ export default function Overview() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
 
         {/* APs */}
-        <section style={SECTION_STYLE}>
-          <h2 style={HEADER_STYLE}>access points ({aps.length})</h2>
+        <section style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 16 }}>
+          <h2 style={{ color: "var(--muted)", fontSize: 11, letterSpacing: 2, marginBottom: 12, textTransform: "uppercase" }}>
+            access points ({aps.length})
+          </h2>
           {aps.length === 0
             ? <div style={{ color: "var(--muted)" }}>none seen</div>
-            : <div style={LIST_SCROLL}>{aps.map(ap => (
-              <div key={ap.mac} style={ROW_STYLE}>
+            : aps.map(ap => (
+              <div key={ap.mac} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <Link href={`/device?mac=${encodeURIComponent(ap.mac)}`} style={{ color: "var(--text)", fontFamily: "monospace" }}>
-                    {formatMac(ap.mac)}
-                  </Link>
+                  <div style={{ color: "var(--text)", fontFamily: "monospace" }}>{formatMac(ap.mac)}</div>
                   <div style={{ color: "var(--muted)", fontSize: 11 }}>ch {ap.channel}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -189,19 +166,21 @@ export default function Overview() {
                   <div style={{ color: "var(--muted)", fontSize: 11 }}>last {formatTs(ap.last_seen)}</div>
                 </div>
               </div>
-            ))}</div>
+            ))
           }
         </section>
 
         {/* devices */}
-        <section style={SECTION_STYLE}>
-          <h2 style={HEADER_STYLE}>devices ({devices.length})</h2>
+        <section style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 16 }}>
+          <h2 style={{ color: "var(--muted)", fontSize: 11, letterSpacing: 2, marginBottom: 12, textTransform: "uppercase" }}>
+            devices ({devices.length})
+          </h2>
           {devices.length === 0
             ? <div style={{ color: "var(--muted)" }}>none seen</div>
-            : <div style={LIST_SCROLL}>{devices.map(d => {
+            : devices.map(d => {
               const ec = ecMap[d.mac];
               return (
-                <div key={d.mac} style={ROW_STYLE}>
+                <div key={d.mac} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <Link href={`/device?mac=${encodeURIComponent(d.mac)}`} style={{ color: "var(--text)", fontFamily: "monospace" }}>
                       {formatMac(d.mac)}
@@ -217,48 +196,47 @@ export default function Overview() {
                   </div>
                 </div>
               );
-              })}</div>
+          })
           }
         </section>
       </div>
 
+      {/* awdl + probers */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
 
-        {/* AWDL */}
-        <section style={SECTION_STYLE}>
-          <h2 style={HEADER_STYLE}>awdl peers ({awdl.length})</h2>
+        <section style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 16 }}>
+          <h2 style={{ color: "var(--muted)", fontSize: 11, letterSpacing: 2, marginBottom: 12, textTransform: "uppercase" }}>
+            awdl peers ({awdl.length})
+          </h2>
           {awdl.length === 0
             ? <div style={{ color: "var(--muted)" }}>none seen</div>
-            : <div style={LIST_SCROLL}>{awdl.map(a => (
-              <div key={a.mac} style={ROW_STYLE}>
-                <Link href={`/device?mac=${encodeURIComponent(a.mac)}`} style={{ color: "var(--text)", fontFamily: "monospace" }}>
-                  {formatMac(a.mac)}
-                </Link>
+            : awdl.map(a => (
+              <div key={a.mac} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ color: "var(--text)", fontFamily: "monospace" }}>{formatMac(a.mac)}</div>
                 <div style={{ textAlign: "right", color: "var(--muted)", fontSize: 11 }}>
                   <div>{a.rssi} dBm · ch {a.channel}</div>
                   <div>last {formatTs(a.last_seen)}</div>
                 </div>
               </div>
-            ))}</div>
+            ))
           }
         </section>
 
-        {/* probers */}
-        <section style={SECTION_STYLE}>
-          <h2 style={HEADER_STYLE}>probers ({probers.length})</h2>
+        <section style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 16 }}>
+          <h2 style={{ color: "var(--muted)", fontSize: 11, letterSpacing: 2, marginBottom: 12, textTransform: "uppercase" }}>
+            probers ({probers.length})
+          </h2>
           {probers.length === 0
             ? <div style={{ color: "var(--muted)" }}>none seen</div>
-            : <div style={LIST_SCROLL}>{probers.map(p => (
-              <div key={p.mac} style={ROW_STYLE}>
-                <Link href={`/device?mac=${encodeURIComponent(p.mac)}`} style={{ color: "var(--text)", fontFamily: "monospace" }}>
-                  {formatMac(p.mac)}
-                </Link>
+            : probers.map(p => (
+              <div key={p.mac} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ color: "var(--text)", fontFamily: "monospace" }}>{formatMac(p.mac)}</div>
                 <div style={{ textAlign: "right", color: "var(--muted)", fontSize: 11 }}>
                   <div>{p.rssi} dBm · ch {p.channel}</div>
                   <div>last {formatTs(p.last_seen)}</div>
                 </div>
               </div>
-            ))}</div>
+            ))
           }
         </section>
       </div>

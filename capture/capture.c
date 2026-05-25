@@ -323,8 +323,8 @@ int capture_start(const capture_config_t *config)
 		uint64_t ts = now_us();
 
 #ifdef DEBUG
-		if (!debug_dumped) {
-			debug_dumped = 1;
+		if (debug_dumped < 100) {
+			debug_dumped++;
 			int dump_len = (int)n < 64 ? (int)n : 64;
 			fprintf(stderr, "radiotap raw (%d bytes total):\n", (int)n);
 			for (int i = 0; i < dump_len; i++) {

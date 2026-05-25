@@ -47,6 +47,26 @@ export interface EventCounts {
 	disconnects: number;
 }
 
+export interface Station {
+	mac:             string;
+	is_ap:           boolean;
+	is_prober:       boolean;
+	is_awdl:         boolean;
+	is_randomized:   boolean;
+	channel:         number;
+	rssi:            number;
+	mgmt_tx:         number;
+	mgmt_rx:         number;
+	ctrl_tx:         number;
+	ctrl_rx:         number;
+	data_tx:         number;
+	data_rx:         number;
+	mgmt_subtype_tx: number[];
+	last_peer:       string;
+	first_seen:      number;
+	last_seen:       number;
+}
+
 export async function fetchAps(): Promise<Ap[]> {
 	const r = await fetch(`${BASE}/aps`);
 	return r.json();
@@ -80,6 +100,11 @@ export async function fetchEvents(): Promise<Event[]> {
 
 export async function fetchEventCounts(): Promise<EventCounts[]> {
 	const r = await fetch(`${BASE}/events/counts`);
+	return r.json();
+}
+
+export async function fetchStations(): Promise<Station[]> {
+	const r = await fetch(`${BASE}/stations`);
 	return r.json();
 }
 

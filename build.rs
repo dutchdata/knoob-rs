@@ -13,6 +13,7 @@ fn main() {
         .flag("-Wall")
         .flag("-Wextra")
         .flag("-O2")
+        .define("DEBUG", None)
         .define("_GNU_SOURCE", None)
         .file(capture_dir.join("capture.c"))
         .file(capture_dir.join("chanhop.c"))

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::db::{
     AppDb, EventRecord,
     get_all_aps, get_all_devices, get_all_events,
+    get_all_stations,
     get_frame_counts_for_mac,
     get_frame_counts_total,
 };
@@ -74,6 +75,27 @@ pub struct DeviceEventCounts {
     pub mac:        String,
     pub connects:   u32,
     pub disconnects: u32,
+}
+
+#[derive(Serialize)]
+pub struct StationResponse {
+    pub mac:           String,
+    pub is_ap:         bool,
+    pub is_prober:     bool,
+    pub is_awdl:       bool,
+    pub is_randomized: bool,
+    pub channel:       u8,
+    pub rssi:          i8,
+    pub mgmt_tx:       u64,
+    pub mgmt_rx:       u64,
+    pub ctrl_tx:       u64,
+    pub ctrl_rx:       u64,
+    pub data_tx:       u64,
+    pub mgmt_subtype_tx: [u64; 16],
+    pub data_rx:       u64,
+    pub last_peer:     String,
+    pub first_seen:    u64,
+    pub last_seen:     u64,
 }
 
 // -----------------------------------------------------------------------------
@@ -294,6 +316,41 @@ pub async fn get_event_counts(db: web::Data<Arc<AppDb>>) -> impl Responder {
     }).collect();
 
     resp.sort_by(|a, b| a.mac.cmp(&b.mac));
+
+    HttpResponse::Ok().json(resp)
+}
+
+/// GET /api/stations
+/// Unified table — APs and devices in one list, distinguished by is_ap.
+#[get("/stations")]
+pub async fn get_stations(db: web::Data<Arc<AppDb>>) -> impl Responder {
+    let stations = match get_all_stations(db.stations_env.clone(), db.stations_db.clone()) {
+        Ok(v)  => v,
+        Err(e) => {
+            tracing::error!("get_stations error: {}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    let resp: Vec<StationResponse> = stations.iter().map(|s| StationResponse {
+        mac:           mac_to_string(&s.mac),
+        is_ap:         s.is_ap,
+        is_prober:     s.is_prober,
+        is_awdl:       s.is_awdl,
+        is_randomized: s.is_randomized,
+        channel:       s.channel,
+        rssi:          s.rssi,
+        mgmt_tx:       s.mgmt_tx,
+        mgmt_rx:       s.mgmt_rx,
+        ctrl_tx:       s.ctrl_tx,
+        ctrl_rx:       s.ctrl_rx,
+        data_tx:       s.data_tx,
+        data_rx:       s.data_rx,
+        mgmt_subtype_tx: s.mgmt_subtype_tx,
+        last_peer:     mac_to_string(&s.last_peer),
+        first_seen:    s.first_seen,
+        last_seen:     s.last_seen,
+    }).collect();
 
     HttpResponse::Ok().json(resp)
 }
