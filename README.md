@@ -59,16 +59,16 @@ Optionally, you can create a utility like this to make switching simpler:
 i="your_interface_name"
 mode="$1"  # accept on/off or 1/0
 
-iwconfig $i
-echo
-sudo ip link set $i down
-
 case "$mode" in
-  on|1)  sudo iw dev $i set type monitor ;;
-  off|0) sudo iw dev $i set type managed ;;
+  on|1)  type="monitor" ;;
+  off|0) type="managed" ;;
   *) echo "usage: $0 {on|off|1|0}"; exit 1 ;;
 esac
 
+iwconfig $i
+echo
+sudo ip link set $i down
+sudo iw dev $i set type $type
 sudo ip link set $i up
 iwconfig $i
 
