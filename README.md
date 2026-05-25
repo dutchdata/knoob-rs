@@ -25,6 +25,12 @@ serves a web UI showing per-second packet counts and association events.
 - Rust 1.85 or newer (uses edition 2024)
 - gcc and libc headers
 - Node.js 20 or newer to build the frontend
+- OUI file from Wireshark (see below)
+
+```
+# run in project root at same level as Cargo.toml
+curl -o manuf https://www.wireshark.org/download/automated/data/manuf
+```
 
 ## Build
 
