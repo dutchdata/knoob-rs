@@ -52,6 +52,29 @@ sudo iw <iface> set monitor control
 sudo ip link set <iface> up
 ```
 
+Optionally, you can create a utility like this to make switching simpler:
+```
+#!/bin/bash
+
+i="your_interface_name"
+mode="$1"  # accept on/off or 1/0
+
+iwconfig $i
+echo
+sudo ip link set $i down
+
+case "$mode" in
+  on|1)  sudo iw dev $i set type monitor ;;
+  off|0) sudo iw dev $i set type managed ;;
+  *) echo "usage: $0 {on|off|1|0}"; exit 1 ;;
+esac
+
+sudo ip link set $i up
+iwconfig $i
+
+# monitor.sh
+```
+
 Then:
 
 ```
